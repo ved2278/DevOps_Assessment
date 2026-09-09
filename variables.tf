@@ -1,125 +1,94 @@
+variable "name_prefix" {
+  description = "Prefix used for naming ECS resources"
+  type        = string
+}
+
 variable "aws_region" {
-  description = "AWS region to deploy into"
+  description = "AWS region, used for CloudWatch log configuration"
   type        = string
-  default     = "us-east-1"
 }
 
-variable "vpc_cidr" {
-  description = "CIDR block for the VPC"
+variable "vpc_id" {
+  description = "VPC ID the ALB target group is created in"
   type        = string
-  default     = "10.1.0.0/16"
 }
 
-variable "public_subnet_cidrs" {
-  description = "CIDR blocks for public subnets"
+variable "public_subnet_ids" {
+  description = "Public subnet IDs for the ALB"
   type        = list(string)
-  default     = ["10.1.0.0/24", "10.1.1.0/24"]
 }
 
-variable "private_subnet_cidrs" {
-  description = "CIDR blocks for private subnets"
+variable "private_subnet_ids" {
+  description = "Private subnet IDs for the ECS/Fargate tasks"
   type        = list(string)
-  default     = ["10.1.10.0/24", "10.1.11.0/24"]
 }
 
-variable "enable_nat_gateway" {
-  description = "Whether to create a NAT gateway (costs money; can disable for plan-only review)"
-  type        = bool
-  default     = true
+variable "alb_security_group_id" {
+  description = "Security group ID for the ALB"
+  type        = string
+}
+
+variable "ecs_security_group_id" {
+  description = "Security group ID for the ECS tasks"
+  type        = string
 }
 
 variable "container_image" {
-  description = "Container image for the app service"
+  description = "Container image to run (e.g. nginx:1.27 or a placeholder backend image)"
   type        = string
   default     = "public.ecr.aws/nginx/nginx:1.27"
 }
 
 variable "container_port" {
-  description = "Port the app container listens on"
+  description = "Port the container listens on"
   type        = number
   default     = 80
 }
 
-variable "ecs_desired_count" {
-  description = "Number of ECS tasks to run"
-  type        = number
-  default     = 2
+variable "container_environment" {
+  description = "Environment variables passed to the app container"
+  type        = map(string)
+  default     = {}
 }
 
-variable "ecs_task_cpu" {
-  description = "Fargate task CPU units"
+variable "health_check_path" {
+  description = "Path the ALB target group uses for health checks"
+  type        = string
+  default     = "/"
+}
+
+variable "task_cpu" {
+  description = "Fargate task CPU units (e.g. 256, 512)"
+  type        = string
+  default     = "256"
+}
+
+variable "task_memory" {
+  description = "Fargate task memory in MB (e.g. 512, 1024)"
   type        = string
   default     = "512"
 }
 
-variable "ecs_task_memory" {
-  description = "Fargate task memory in MB"
-  type        = string
-  default     = "1024"
-}
-
-variable "db_engine" {
-  description = "Database engine: postgres or mysql"
-  type        = string
-  default     = "postgres"
-}
-
-variable "db_engine_version" {
-  description = "Database engine version"
-  type        = string
-  default     = "16.4"
-}
-
-variable "db_instance_class" {
-  description = "RDS instance class for prod (larger, tuned for real load)"
-  type        = string
-  default     = "db.t4g.medium"
-}
-
-variable "db_allocated_storage" {
-  description = "Allocated storage in GB"
+variable "desired_count" {
+  description = "Number of ECS tasks to run"
   type        = number
-  default     = 100
+  default     = 1
 }
 
-variable "db_name" {
-  description = "Initial database name"
-  type        = string
-  default     = "hotelbooking"
-}
-
-variable "db_username" {
-  description = "Master username"
-  type        = string
-  default     = "app_admin"
-}
-
-variable "db_password" {
-  description = "Master password. Must be supplied via TF_VAR_db_password or a secrets manager — no default in prod."
-  type        = string
-  sensitive   = true
-}
-
-variable "db_port" {
-  description = "Database port"
+variable "log_retention_days" {
+  description = "CloudWatch log retention in days"
   type        = number
-  default     = 5432
+  default     = 14
 }
 
-variable "db_multi_az" {
-  description = "Multi-AZ standby (on in prod for availability)"
+variable "enable_container_insights" {
+  description = "Whether to enable ECS Container Insights"
   type        = bool
-  default     = true
+  default     = false
 }
 
-variable "db_backup_retention_period" {
-  description = "Automated backup retention in days (longer in prod)"
-  type        = number
-  default     = 30
-}
-
-variable "db_deletion_protection" {
-  description = "Deletion protection (on in prod to prevent accidental destroy)"
-  type        = bool
-  default     = true
+variable "tags" {
+  description = "Common tags applied to ECS resources"
+  type        = map(string)
+  default     = {}
 }
