@@ -1,5 +1,5 @@
 ############################################
-# Dev environment
+# Prod environment
 # Internet -> ALB -> ECS/Fargate -> RDS
 ############################################
 
@@ -31,10 +31,10 @@ provider "aws" {
 }
 
 locals {
-  name_prefix = "hotelbooking-dev"
+  name_prefix = "hotelbooking-prod"
   common_tags = {
     Project     = "hotelbooking"
-    Environment = "dev"
+    Environment = "prod"
     ManagedBy   = "terraform"
   }
 }
