@@ -1,166 +1,200 @@
 ############################################
-# ECS module
-# ALB -> ECS/Fargate service running the app container
+# Network module
+# VPC + public/private subnets + routing
 ############################################
 
-resource "aws_ecs_cluster" "this" {
-  name = "${var.name_prefix}-cluster"
+data "aws_availability_zones" "available" {
+  state = "available"
+}
 
-  setting {
-    name  = "containerInsights"
-    value = var.enable_container_insights ? "enabled" : "disabled"
-  }
+resource "aws_vpc" "this" {
+  cidr_block           = var.vpc_cidr
+  enable_dns_support   = true
+  enable_dns_hostnames = true
 
   tags = merge(var.tags, {
-    Name = "${var.name_prefix}-cluster"
+    Name = "${var.name_prefix}-vpc"
   })
 }
 
-# ---------- ALB ----------
+# ---------- Public subnets ----------
 
-resource "aws_lb" "this" {
-  name               = "${var.name_prefix}-alb"
-  internal           = false
-  load_balancer_type = "application"
-  security_groups    = [var.alb_security_group_id]
-  subnets            = var.public_subnet_ids
+resource "aws_subnet" "public" {
+  count                   = length(var.public_subnet_cidrs)
+  vpc_id                  = aws_vpc.this.id
+  cidr_block              = var.public_subnet_cidrs[count.index]
+  availability_zone       = data.aws_availability_zones.available.names[count.index]
+  map_public_ip_on_launch = true
 
   tags = merge(var.tags, {
-    Name = "${var.name_prefix}-alb"
+    Name = "${var.name_prefix}-public-${count.index + 1}"
+    Tier = "public"
   })
 }
 
-resource "aws_lb_target_group" "this" {
-  name        = "${var.name_prefix}-tg"
-  port        = var.container_port
-  protocol    = "HTTP"
-  vpc_id      = var.vpc_id
-  target_type = "ip"
-
-  health_check {
-    path                = var.health_check_path
-    healthy_threshold   = 2
-    unhealthy_threshold = 3
-    interval            = 30
-    timeout             = 5
-    matcher             = "200-399"
-  }
+resource "aws_internet_gateway" "this" {
+  vpc_id = aws_vpc.this.id
 
   tags = merge(var.tags, {
-    Name = "${var.name_prefix}-tg"
+    Name = "${var.name_prefix}-igw"
   })
 }
 
-resource "aws_lb_listener" "http" {
-  load_balancer_arn = aws_lb.this.arn
-  port              = 80
-  protocol          = "HTTP"
+resource "aws_route_table" "public" {
+  vpc_id = aws_vpc.this.id
 
-  default_action {
-    type             = "forward"
-    target_group_arn = aws_lb_target_group.this.arn
+  route {
+    cidr_block = "0.0.0.0/0"
+    gateway_id = aws_internet_gateway.this.id
   }
+
+  tags = merge(var.tags, {
+    Name = "${var.name_prefix}-public-rt"
+  })
 }
 
-# ---------- IAM ----------
+resource "aws_route_table_association" "public" {
+  count          = length(aws_subnet.public)
+  subnet_id      = aws_subnet.public[count.index].id
+  route_table_id = aws_route_table.public.id
+}
 
-data "aws_iam_policy_document" "ecs_assume_role" {
-  statement {
-    actions = ["sts:AssumeRole"]
-    principals {
-      type        = "Service"
-      identifiers = ["ecs-tasks.amazonaws.com"]
+# ---------- Private subnets ----------
+
+resource "aws_subnet" "private" {
+  count             = length(var.private_subnet_cidrs)
+  vpc_id            = aws_vpc.this.id
+  cidr_block        = var.private_subnet_cidrs[count.index]
+  availability_zone = data.aws_availability_zones.available.names[count.index]
+
+  tags = merge(var.tags, {
+    Name = "${var.name_prefix}-private-${count.index + 1}"
+    Tier = "private"
+  })
+}
+
+# NAT so ECS tasks in private subnets can pull images / reach the internet.
+# Single NAT gateway is used to keep the assessment infra simple and cheap;
+# prod could be upgraded to one NAT per AZ for higher availability.
+resource "aws_eip" "nat" {
+  count  = var.enable_nat_gateway ? 1 : 0
+  domain = "vpc"
+
+  tags = merge(var.tags, {
+    Name = "${var.name_prefix}-nat-eip"
+  })
+}
+
+resource "aws_nat_gateway" "this" {
+  count         = var.enable_nat_gateway ? 1 : 0
+  allocation_id = aws_eip.nat[0].id
+  subnet_id     = aws_subnet.public[0].id
+
+  tags = merge(var.tags, {
+    Name = "${var.name_prefix}-nat"
+  })
+
+  depends_on = [aws_internet_gateway.this]
+}
+
+resource "aws_route_table" "private" {
+  vpc_id = aws_vpc.this.id
+
+  dynamic "route" {
+    for_each = var.enable_nat_gateway ? [1] : []
+    content {
+      cidr_block     = "0.0.0.0/0"
+      nat_gateway_id = aws_nat_gateway.this[0].id
     }
   }
+
+  tags = merge(var.tags, {
+    Name = "${var.name_prefix}-private-rt"
+  })
 }
 
-resource "aws_iam_role" "execution" {
-  name               = "${var.name_prefix}-ecs-execution-role"
-  assume_role_policy = data.aws_iam_policy_document.ecs_assume_role.json
-
-  tags = var.tags
+resource "aws_route_table_association" "private" {
+  count          = length(aws_subnet.private)
+  subnet_id      = aws_subnet.private[count.index].id
+  route_table_id = aws_route_table.private.id
 }
 
-resource "aws_iam_role_policy_attachment" "execution" {
-  role       = aws_iam_role.execution.name
-  policy_arn = "arn:aws:iam::aws:policy/service-role/AmazonECSTaskExecutionRolePolicy"
-}
+# ---------- Security groups ----------
 
-resource "aws_iam_role" "task" {
-  name               = "${var.name_prefix}-ecs-task-role"
-  assume_role_policy = data.aws_iam_policy_document.ecs_assume_role.json
+resource "aws_security_group" "alb" {
+  name        = "${var.name_prefix}-alb-sg"
+  description = "Allow inbound HTTP/HTTPS from the internet to the ALB"
+  vpc_id      = aws_vpc.this.id
 
-  tags = var.tags
-}
-
-# ---------- Logs ----------
-
-resource "aws_cloudwatch_log_group" "this" {
-  name              = "/ecs/${var.name_prefix}"
-  retention_in_days = var.log_retention_days
-
-  tags = var.tags
-}
-
-# ---------- Task definition + service ----------
-
-resource "aws_ecs_task_definition" "this" {
-  family                   = "${var.name_prefix}-task"
-  requires_compatibilities = ["FARGATE"]
-  network_mode             = "awsvpc"
-  cpu                      = var.task_cpu
-  memory                   = var.task_memory
-  execution_role_arn       = aws_iam_role.execution.arn
-  task_role_arn            = aws_iam_role.task.arn
-
-  container_definitions = jsonencode([
-    {
-      name      = "${var.name_prefix}-app"
-      image     = var.container_image
-      essential = true
-      portMappings = [
-        {
-          containerPort = var.container_port
-          protocol      = "tcp"
-        }
-      ]
-      environment = [
-        for k, v in var.container_environment : { name = k, value = v }
-      ]
-      logConfiguration = {
-        logDriver = "awslogs"
-        options = {
-          "awslogs-group"         = aws_cloudwatch_log_group.this.name
-          "awslogs-region"        = var.aws_region
-          "awslogs-stream-prefix" = "app"
-        }
-      }
-    }
-  ])
-
-  tags = var.tags
-}
-
-resource "aws_ecs_service" "this" {
-  name            = "${var.name_prefix}-service"
-  cluster         = aws_ecs_cluster.this.id
-  task_definition = aws_ecs_task_definition.this.arn
-  desired_count   = var.desired_count
-  launch_type     = "FARGATE"
-
-  network_configuration {
-    subnets          = var.private_subnet_ids
-    security_groups  = [var.ecs_security_group_id]
-    assign_public_ip = false
+  ingress {
+    description = "HTTP from internet"
+    from_port   = 80
+    to_port     = 80
+    protocol    = "tcp"
+    cidr_blocks = ["0.0.0.0/0"]
   }
 
-  load_balancer {
-    target_group_arn = aws_lb_target_group.this.arn
-    container_name    = "${var.name_prefix}-app"
-    container_port    = var.container_port
+  egress {
+    description = "All outbound"
+    from_port   = 0
+    to_port     = 0
+    protocol    = "-1"
+    cidr_blocks = ["0.0.0.0/0"]
   }
 
-  depends_on = [aws_lb_listener.http]
+  tags = merge(var.tags, {
+    Name = "${var.name_prefix}-alb-sg"
+  })
+}
 
-  tags = var.tags
+resource "aws_security_group" "ecs" {
+  name        = "${var.name_prefix}-ecs-sg"
+  description = "Allow inbound traffic from the ALB only"
+  vpc_id      = aws_vpc.this.id
+
+  ingress {
+    description     = "App traffic from ALB"
+    from_port       = var.container_port
+    to_port         = var.container_port
+    protocol        = "tcp"
+    security_groups = [aws_security_group.alb.id]
+  }
+
+  egress {
+    description = "All outbound"
+    from_port   = 0
+    to_port     = 0
+    protocol    = "-1"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+
+  tags = merge(var.tags, {
+    Name = "${var.name_prefix}-ecs-sg"
+  })
+}
+
+resource "aws_security_group" "rds" {
+  name        = "${var.name_prefix}-rds-sg"
+  description = "Allow database traffic from ECS tasks only"
+  vpc_id      = aws_vpc.this.id
+
+  ingress {
+    description     = "DB access from ECS tasks"
+    from_port       = var.db_port
+    to_port         = var.db_port
+    protocol        = "tcp"
+    security_groups = [aws_security_group.ecs.id]
+  }
+
+  egress {
+    description = "All outbound"
+    from_port   = 0
+    to_port     = 0
+    protocol    = "-1"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+
+  tags = merge(var.tags, {
+    Name = "${var.name_prefix}-rds-sg"
+  })
 }

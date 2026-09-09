@@ -1,94 +1,44 @@
 variable "name_prefix" {
-  description = "Prefix used for naming ECS resources"
+  description = "Prefix used for naming all network resources (e.g. hotelbook-dev)"
   type        = string
 }
 
-variable "aws_region" {
-  description = "AWS region, used for CloudWatch log configuration"
+variable "vpc_cidr" {
+  description = "CIDR block for the VPC"
   type        = string
+  default     = "10.0.0.0/16"
 }
 
-variable "vpc_id" {
-  description = "VPC ID the ALB target group is created in"
-  type        = string
-}
-
-variable "public_subnet_ids" {
-  description = "Public subnet IDs for the ALB"
+variable "public_subnet_cidrs" {
+  description = "CIDR blocks for public subnets (one per AZ)"
   type        = list(string)
 }
 
-variable "private_subnet_ids" {
-  description = "Private subnet IDs for the ECS/Fargate tasks"
+variable "private_subnet_cidrs" {
+  description = "CIDR blocks for private subnets (one per AZ)"
   type        = list(string)
 }
 
-variable "alb_security_group_id" {
-  description = "Security group ID for the ALB"
-  type        = string
-}
-
-variable "ecs_security_group_id" {
-  description = "Security group ID for the ECS tasks"
-  type        = string
-}
-
-variable "container_image" {
-  description = "Container image to run (e.g. nginx:1.27 or a placeholder backend image)"
-  type        = string
-  default     = "public.ecr.aws/nginx/nginx:1.27"
+variable "enable_nat_gateway" {
+  description = "Whether to create a NAT gateway for private subnet internet egress"
+  type        = bool
+  default     = true
 }
 
 variable "container_port" {
-  description = "Port the container listens on"
+  description = "Port the application container listens on, used to scope the ECS security group"
   type        = number
   default     = 80
 }
 
-variable "container_environment" {
-  description = "Environment variables passed to the app container"
-  type        = map(string)
-  default     = {}
-}
-
-variable "health_check_path" {
-  description = "Path the ALB target group uses for health checks"
-  type        = string
-  default     = "/"
-}
-
-variable "task_cpu" {
-  description = "Fargate task CPU units (e.g. 256, 512)"
-  type        = string
-  default     = "256"
-}
-
-variable "task_memory" {
-  description = "Fargate task memory in MB (e.g. 512, 1024)"
-  type        = string
-  default     = "512"
-}
-
-variable "desired_count" {
-  description = "Number of ECS tasks to run"
+variable "db_port" {
+  description = "Port the database listens on, used to scope the RDS security group"
   type        = number
-  default     = 1
-}
-
-variable "log_retention_days" {
-  description = "CloudWatch log retention in days"
-  type        = number
-  default     = 14
-}
-
-variable "enable_container_insights" {
-  description = "Whether to enable ECS Container Insights"
-  type        = bool
-  default     = false
+  default     = 5432
 }
 
 variable "tags" {
-  description = "Common tags applied to ECS resources"
+  description = "Common tags applied to all network resources"
   type        = map(string)
   default     = {}
 }

@@ -1,14 +1,29 @@
-output "cluster_id" {
-  description = "ECS cluster ID"
-  value       = aws_ecs_cluster.this.id
+output "vpc_id" {
+  description = "ID of the VPC"
+  value       = aws_vpc.this.id
 }
 
-output "service_name" {
-  description = "ECS service name"
-  value       = aws_ecs_service.this.name
+output "public_subnet_ids" {
+  description = "IDs of the public subnets"
+  value       = aws_subnet.public[*].id
 }
 
-output "alb_dns_name" {
-  description = "Public DNS name of the ALB"
-  value       = aws_lb.this.dns_name
+output "private_subnet_ids" {
+  description = "IDs of the private subnets"
+  value       = aws_subnet.private[*].id
+}
+
+output "alb_security_group_id" {
+  description = "Security group ID for the ALB"
+  value       = aws_security_group.alb.id
+}
+
+output "ecs_security_group_id" {
+  description = "Security group ID for ECS/Fargate tasks"
+  value       = aws_security_group.ecs.id
+}
+
+output "rds_security_group_id" {
+  description = "Security group ID for RDS"
+  value       = aws_security_group.rds.id
 }
