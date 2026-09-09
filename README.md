@@ -284,3 +284,4 @@ Both counts should match.
 - [ ] `./scripts/backup.sh` produces a non-empty `.dump` file in `backups/`
 - [ ] `./scripts/restore.sh` restores into `hotelbooking_restore` and row counts match the live database
 - [ ] No secrets or real backups are committed to Git
+# DevOps_Assessment
