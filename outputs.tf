@@ -1,29 +1,19 @@
-output "vpc_id" {
-  description = "ID of the VPC"
-  value       = aws_vpc.this.id
+output "db_instance_id" {
+  description = "RDS instance identifier"
+  value       = aws_db_instance.this.id
 }
 
-output "public_subnet_ids" {
-  description = "IDs of the public subnets"
-  value       = aws_subnet.public[*].id
+output "db_endpoint" {
+  description = "Connection endpoint for the database (host:port)"
+  value       = aws_db_instance.this.endpoint
 }
 
-output "private_subnet_ids" {
-  description = "IDs of the private subnets"
-  value       = aws_subnet.private[*].id
+output "db_address" {
+  description = "Hostname of the database, without port"
+  value       = aws_db_instance.this.address
 }
 
-output "alb_security_group_id" {
-  description = "Security group ID for the ALB"
-  value       = aws_security_group.alb.id
-}
-
-output "ecs_security_group_id" {
-  description = "Security group ID for ECS/Fargate tasks"
-  value       = aws_security_group.ecs.id
-}
-
-output "rds_security_group_id" {
-  description = "Security group ID for RDS"
-  value       = aws_security_group.rds.id
+output "db_name" {
+  description = "Name of the initial database"
+  value       = aws_db_instance.this.db_name
 }
