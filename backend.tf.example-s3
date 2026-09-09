@@ -1,0 +1,13 @@
+# Example S3 backend for a real dev deployment.
+# Rename this file to backend_override.tf (and remove the "local" backend
+# block from main.tf) once the bucket/table below actually exist.
+#
+# terraform {
+#   backend "s3" {
+#     bucket         = "hotelbooking-tfstate-dev"
+#     key            = "hotelbooking/dev/terraform.tfstate"
+#     region         = "us-east-1"
+#     dynamodb_table = "hotelbooking-tflock-dev"
+#     encrypt        = true
+#   }
+# }
